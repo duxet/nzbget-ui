@@ -4,7 +4,8 @@ extern crate serde_json;
 #[macro_use] extern crate serde_derive;
 
 use gtk::prelude::*;
-use gtk::{Builder, CellRendererText, ListStore, Statusbar, Type, TreeView, TreeViewColumn, Window};
+use gtk::{AboutDialog, Builder, CellRendererText, CellRendererProgress, ListStore,
+    Statusbar, Type, TreeView, TreeViewColumn, MenuItem, Window};
 
 mod client;
 #[macro_use] mod macros;
@@ -13,7 +14,13 @@ mod client;
 #[derive(Debug, Deserialize)]
 struct Group {
     NZBNicename: String,
-    Status: String
+    Status: String,
+    FileSizeLo: u32,
+    FileSizeHi: u32,
+    DownloadedSizeLo: u32,
+    DownloadedSizeHi: u32,
+    RemainingSizeLo: u32,
+    RemainingSizeHi: u32
 }
 
 fn main() {
@@ -23,16 +30,24 @@ fn main() {
     }
 
     let builder = Builder::new_from_string(include_str!("interface.glade"));
+
     let window: Window = builder.get_object("main_window").unwrap();
+    let about_item :MenuItem = builder.get_object("about_item").unwrap();
+    let about_dialog :AboutDialog = builder.get_object("about_dialog").unwrap();
     let status_bar :Statusbar = builder.get_object("status_bar").unwrap();
     let files_tree: TreeView = builder.get_object("files_tree").unwrap();
+
+    about_item.connect_activate(move |_| {
+        about_dialog.run();
+    });
 
     let context_id = status_bar.get_context_id("");
     status_bar.push(context_id, "nzbget-ui");
 
-    let files_store = ListStore::new(&[Type::String, Type::String]);
-    add_column!(files_tree, "Title", 0);
-    add_column!(files_tree, "Status", 1);
+    let files_store = ListStore::new(&[Type::String, Type::String, Type::F32]);
+    add_text_column!(files_tree, "Title", 0);
+    add_text_column!(files_tree, "Status", 1);
+    add_progress_column!(files_tree, "Progress", 2);
 
     files_tree.set_model(Some(&files_store));
 
@@ -41,7 +56,12 @@ fn main() {
     let groups = load_groups();
 
     for group in groups {
-        files_store.insert_with_values(None, &[0, 1], &[&group.NZBNicename, &group.Status]);
+        let file_size = format!("{}{}", group.FileSizeHi, group.FileSizeLo).parse::<f32>().unwrap();
+        let downloaded_size = format!("{}{}", group.DownloadedSizeHi, group.DownloadedSizeLo).parse::<f32>().unwrap();
+
+        let progress = downloaded_size / file_size * 100.0;
+
+        files_store.insert_with_values(None, &[0, 1, 2], &[&group.NZBNicename, &group.Status, &progress]);
     }
 
     window.connect_delete_event(|_, _| {

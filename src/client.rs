@@ -3,7 +3,7 @@ extern crate serde_json;
 use std::io::Read;
 use hyper::client::Client as HyperClient;
 use hyper::header::{ContentType};
-use hyper::mime::{Mime, TopLevel, SubLevel, Attr, Value};
+#[allow(unused_imports)] use hyper::mime::*;
 
 pub struct Client {
     base_uri: String,
@@ -27,8 +27,7 @@ impl Client {
     pub fn call_method(&self, method: &str) -> Response {
         let mut response = self.client.post(format!("{}/jsonrpc", self.base_uri).as_str())
             .body(format!("{{\"method\": \"{}\"}}", method).as_str())
-            .header(ContentType(Mime(TopLevel::Application, SubLevel::Json,
-                        vec![(Attr::Charset, Value::Utf8)])))
+            .header(ContentType(mime!(Application/Json)))
             .send()
             .unwrap();
 
