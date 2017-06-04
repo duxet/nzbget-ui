@@ -53,7 +53,8 @@ fn main() {
 }
 
 fn load_groups() -> Vec<Group> {
-    let response = client::call_method("listgroups");
+    let client = client::Client::new("http://localhost:6789");
+    let response = client.call_method("listgroups");
 
     serde_json::from_value(response.result).unwrap()
 }
