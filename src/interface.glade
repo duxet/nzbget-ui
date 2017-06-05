@@ -32,9 +32,6 @@
         </child>
       </object>
     </child>
-    <child>
-      <placeholder/>
-    </child>
   </object>
   <object class="GtkWindow" id="main_window">
     <property name="can_focus">False</property>
@@ -209,7 +206,7 @@
             <property name="can_focus">True</property>
             <property name="enable_grid_lines">both</property>
             <child internal-child="selection">
-              <object class="GtkTreeSelection"/>
+              <object class="GtkTreeSelection" id="files_tree_selection"/>
             </child>
           </object>
           <packing>
@@ -237,9 +234,6 @@
           </packing>
         </child>
       </object>
-    </child>
-    <child>
-      <placeholder/>
     </child>
   </object>
 </interface>

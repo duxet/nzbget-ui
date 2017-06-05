@@ -5,7 +5,7 @@ extern crate serde_json;
 
 use gtk::prelude::*;
 use gtk::{AboutDialog, Builder, CellRendererText, CellRendererProgress, ListStore,
-    Statusbar, Type, TreeView, TreeViewColumn, MenuItem, Window};
+    Statusbar, Type, TreeView, TreeViewColumn, Menu, MenuItem, Widget, Window};
 
 mod client;
 #[macro_use] mod macros;
@@ -51,6 +51,32 @@ fn main() {
     add_progress_column!(files_tree, "Progress", 2);
 
     files_tree.set_model(Some(&files_store));
+
+    let widget = files_tree.upcast::<Widget>();
+
+    widget.connect_button_release_event(|_, event| {
+        if event.get_button() != 3 {
+            return Inhibit(false)
+        }
+
+        let popup_menu = Menu::new();
+
+        let item = MenuItem::new_with_label("resume");
+        popup_menu.append(&item);
+
+        let item = MenuItem::new_with_label("pause");
+        popup_menu.append(&item);
+
+        popup_menu.append(&gtk::SeparatorMenuItem::new());
+
+        let item = MenuItem::new_with_label("delete");
+        popup_menu.append(&item);
+
+        popup_menu.show_all();
+        popup_menu.popup_easy(event.get_button(), event.get_time());
+
+        Inhibit(false)
+    });
 
     window.show_all();
 
