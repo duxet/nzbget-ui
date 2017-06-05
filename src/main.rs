@@ -39,6 +39,7 @@ fn main() {
 
     about_item.connect_activate(move |_| {
         about_dialog.run();
+        about_dialog.hide();
     });
 
     let context_id = status_bar.get_context_id("");
