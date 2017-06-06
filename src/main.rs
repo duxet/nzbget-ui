@@ -1,12 +1,15 @@
 extern crate gtk;
+extern crate glib;
 extern crate hyper;
 extern crate humansize;
 extern crate serde_json;
 #[macro_use] extern crate serde_derive;
 
+use std::cell::RefCell;
+use std::sync::mpsc::{channel, Receiver};
 use std::thread;
 use gtk::prelude::*;
-use gtk::{AboutDialog, Builder, CellRendererText, CellRendererProgress, ListStore,
+use gtk::{AboutDialog, Builder, CellRendererText, CellRendererProgress, Label, ListStore,
     Statusbar, Type, TreeView, TreeViewColumn, Menu, MenuItem, Widget, Window};
 use humansize::{FileSize, file_size_opts as options};
 
@@ -26,6 +29,13 @@ struct Group {
     RemainingSizeHi: u32
 }
 
+#[allow(non_snake_case)]
+#[derive(Debug, Deserialize)]
+struct Status {
+    DownloadRate: i32,
+    DownloadPaused: bool
+}
+
 fn main() {
     if gtk::init().is_err() {
         println!("Failed to initialize GTK.");
@@ -39,6 +49,7 @@ fn main() {
     let about_dialog :AboutDialog = builder.get_object("about_dialog").unwrap();
     let status_bar :Statusbar = builder.get_object("status_bar").unwrap();
     let files_tree: TreeView = builder.get_object("files_tree").unwrap();
+    let current_speed :Label = builder.get_object("current_speed").unwrap();
 
     about_item.connect_activate(move |_| {
         about_dialog.run();
@@ -84,10 +95,19 @@ fn main() {
 
     window.show_all();
 
+    let (tx, rx) = channel();
+    GLOBAL.with(move |global| {
+        *global.borrow_mut() = Some((current_speed, rx))
+    });
+
     thread::spawn(move || {
         loop {
-            //tx.send(()).unwrap();
-            thread::sleep_ms(1000);
+            let status = load_status();
+
+            tx.send(status).unwrap();
+
+            thread::sleep(std::time::Duration::from_millis(1000));
+            glib::idle_add(receive);
         }
     });
 
@@ -118,7 +138,26 @@ fn load_groups() -> Vec<Group> {
     serde_json::from_value(response.result).unwrap()
 }
 
-fn load_status() {
+fn load_status() -> Status {
     let client = client::Client::new("http://localhost:6789");
-    let response = client.call_method("listgroups");
+    let response = client.call_method("status");
+
+    serde_json::from_value(response.result).unwrap()
 }
+
+fn receive() -> glib::Continue {
+    GLOBAL.with(|global| {
+        if let Some((ref label, ref rx)) = *global.borrow() {
+            if let Ok(status) = rx.try_recv() {
+                let mut human_speed = status.DownloadRate.file_size(options::CONVENTIONAL).unwrap();
+                human_speed.push_str("/s");
+                label.set_label(&human_speed);
+            }
+        }
+    });
+    glib::Continue(false)
+}
+
+thread_local!(
+    static GLOBAL: RefCell<Option<(Label, Receiver<Status>)>> = RefCell::new(None)
+);

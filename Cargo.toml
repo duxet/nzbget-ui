@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["duxet <duxetlg@gmail.com>"]
 
 [dependencies]
+glib = "~0.1"
 gtk = { version = "~0.1", features = ["v3_22"] }
 hyper = "~0.10"
 humansize = "~1.0"
