@@ -1,11 +1,14 @@
 extern crate gtk;
 extern crate hyper;
+extern crate humansize;
 extern crate serde_json;
 #[macro_use] extern crate serde_derive;
 
+use std::thread;
 use gtk::prelude::*;
 use gtk::{AboutDialog, Builder, CellRendererText, CellRendererProgress, ListStore,
     Statusbar, Type, TreeView, TreeViewColumn, Menu, MenuItem, Widget, Window};
+use humansize::{FileSize, file_size_opts as options};
 
 mod client;
 #[macro_use] mod macros;
@@ -45,10 +48,11 @@ fn main() {
     let context_id = status_bar.get_context_id("");
     status_bar.push(context_id, "nzbget-ui");
 
-    let files_store = ListStore::new(&[Type::String, Type::String, Type::F32]);
+    let files_store = ListStore::new(&[Type::String, Type::String, Type::String, Type::F64]);
     add_text_column!(files_tree, "Title", 0);
     add_text_column!(files_tree, "Status", 1);
-    add_progress_column!(files_tree, "Progress", 2);
+    add_text_column!(files_tree, "Size", 2);
+    add_progress_column!(files_tree, "Progress", 3);
 
     files_tree.set_model(Some(&files_store));
 
@@ -80,15 +84,23 @@ fn main() {
 
     window.show_all();
 
+    thread::spawn(move || {
+        loop {
+            //tx.send(()).unwrap();
+            thread::sleep_ms(1000);
+        }
+    });
+
     let groups = load_groups();
 
     for group in groups {
-        let file_size = format!("{}{}", group.FileSizeHi, group.FileSizeLo).parse::<f32>().unwrap();
-        let downloaded_size = format!("{}{}", group.DownloadedSizeHi, group.DownloadedSizeLo).parse::<f32>().unwrap();
+        let file_size = format!("{}{}", group.FileSizeHi, group.FileSizeLo).parse::<i64>().unwrap();
+        let downloaded_size = format!("{}{}", group.DownloadedSizeHi, group.DownloadedSizeLo).parse::<i64>().unwrap();
 
-        let progress = downloaded_size / file_size * 100.0;
+        let progress = downloaded_size as f64 / file_size as f64 * 100.0;
+        let human_size = file_size.file_size(options::CONVENTIONAL).unwrap();
 
-        files_store.insert_with_values(None, &[0, 1, 2], &[&group.NZBNicename, &group.Status, &progress]);
+        files_store.insert_with_values(None, &[0, 1, 2, 3], &[&group.NZBNicename, &group.Status, &human_size, &progress]);
     }
 
     window.connect_delete_event(|_, _| {
@@ -104,4 +116,9 @@ fn load_groups() -> Vec<Group> {
     let response = client.call_method("listgroups");
 
     serde_json::from_value(response.result).unwrap()
+}
+
+fn load_status() {
+    let client = client::Client::new("http://localhost:6789");
+    let response = client.call_method("listgroups");
 }
