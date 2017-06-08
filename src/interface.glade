@@ -201,18 +201,26 @@
           </packing>
         </child>
         <child>
-          <object class="GtkTreeView" id="files_tree">
+          <object class="GtkScrolledWindow">
             <property name="visible">True</property>
             <property name="can_focus">True</property>
-            <property name="enable_grid_lines">both</property>
-            <child internal-child="selection">
-              <object class="GtkTreeSelection" id="files_tree_selection"/>
+            <property name="hscrollbar_policy">never</property>
+            <property name="shadow_type">in</property>
+            <child>
+              <object class="GtkTreeView" id="files_tree">
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="enable_grid_lines">both</property>
+                <child internal-child="selection">
+                  <object class="GtkTreeSelection" id="files_tree_selection"/>
+                </child>
+              </object>
             </child>
           </object>
           <packing>
             <property name="expand">True</property>
             <property name="fill">True</property>
-            <property name="position">2</property>
+            <property name="position">1</property>
           </packing>
         </child>
         <child>
