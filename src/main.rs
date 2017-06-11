@@ -12,32 +12,13 @@ use std::sync::Mutex;
 use std::thread;
 use gtk::prelude::*;
 use gtk::{AboutDialog, Builder, CellRendererText, CellRendererProgress, Label, ListStore,
-    Statusbar, Type, TreeIter, TreeView, TreeViewColumn, Menu, MenuItem, Widget, Window};
+    Statusbar, ToolButton, Type, TreeIter, TreeView, TreeViewColumn, Menu, MenuItem, Widget, Window};
 use humansize::{FileSize, file_size_opts as options};
+use nzbget::{Group, Status};
 
 mod client;
 #[macro_use] mod macros;
-
-#[allow(non_snake_case)]
-#[derive(Debug, Deserialize)]
-struct Group {
-    NZBID: u32,
-    NZBNicename: String,
-    Status: String,
-    FileSizeLo: u32,
-    FileSizeHi: u32,
-    DownloadedSizeLo: u32,
-    DownloadedSizeHi: u32,
-    RemainingSizeLo: u32,
-    RemainingSizeHi: u32
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Deserialize)]
-struct Status {
-    DownloadRate: i32,
-    DownloadPaused: bool
-}
+mod nzbget;
 
 fn main() {
     if gtk::init().is_err() {
@@ -48,15 +29,30 @@ fn main() {
     let builder = Builder::new_from_string(include_str!("interface.glade"));
 
     let window: Window = builder.get_object("main_window").unwrap();
-    let about_item :MenuItem = builder.get_object("about_item").unwrap();
-    let about_dialog :AboutDialog = builder.get_object("about_dialog").unwrap();
-    let status_bar :Statusbar = builder.get_object("status_bar").unwrap();
+    let about_item: MenuItem = builder.get_object("about_item").unwrap();
+    let about_dialog: AboutDialog = builder.get_object("about_dialog").unwrap();
     let files_tree: TreeView = builder.get_object("files_tree").unwrap();
-    let current_speed :Label = builder.get_object("current_speed").unwrap();
+    let status_bar: Statusbar = builder.get_object("status_bar").unwrap();
 
     about_item.connect_activate(move |_| {
         about_dialog.run();
         about_dialog.hide();
+    });
+
+    let pause_button: ToolButton = builder.get_object("pause_button").unwrap();
+    pause_button.connect_clicked(|button| {
+        let client = client::Client::new("http://localhost:6789");
+        let widget = button.clone().upcast::<Widget>();
+
+        widget.set_sensitive(false);
+
+        if button.get_stock_id().unwrap() == "gtk-media-pause" {
+            client.call_method("pausedownload");
+        } else {
+            client.call_method("resumedownload");
+        }
+
+        widget.set_sensitive(true);
     });
 
     let context_id = status_bar.get_context_id("");
@@ -102,7 +98,7 @@ fn main() {
 
     let (tx, rx) = channel();
     GLOBAL.with(move |global| {
-        *global.borrow_mut() = Some((current_speed, files_store, rendered_groups, rx))
+        *global.borrow_mut() = Some((builder, files_store, rendered_groups, rx))
     });
 
     thread::spawn(move || {
@@ -161,9 +157,18 @@ fn update_group(group: &Group, iter: &TreeIter, files_store: &ListStore) {
 
 fn receive() -> glib::Continue {
     GLOBAL.with(|global| {
-        if let Some((ref current_speed, ref files_store, ref rendered_groups, ref rx)) = *global.borrow() {
+        if let Some((ref builder, ref files_store, ref rendered_groups, ref rx)) = *global.borrow() {
             if let Ok(data) = rx.try_recv() {
                 let (groups, status) = data;
+
+                let pause_button: ToolButton = builder.get_object("pause_button").unwrap();
+
+                if status.DownloadPaused {
+                    pause_button.set_stock_id("gtk-media-play");
+                } else {
+                    pause_button.set_stock_id("gtk-media-pause");
+                }
+
                 let mut rendered_groups = rendered_groups.lock().unwrap();
 
                 for group in groups {
@@ -177,8 +182,9 @@ fn receive() -> glib::Continue {
                 }
 
                 let mut human_speed = status.DownloadRate.file_size(options::CONVENTIONAL).unwrap();
-
                 human_speed.push_str("/s");
+
+                let current_speed: Label = builder.get_object("current_speed").unwrap();
                 current_speed.set_label(&human_speed);
             }
         }
@@ -187,5 +193,5 @@ fn receive() -> glib::Continue {
 }
 
 thread_local!(
-    static GLOBAL: RefCell<Option<(Label, ListStore, Mutex<HashMap<u32, TreeIter>>, Receiver<(Vec<Group>, Status)>)>> = RefCell::new(None)
+    static GLOBAL: RefCell<Option<(Builder, ListStore, Mutex<HashMap<u32, TreeIter>>, Receiver<(Vec<Group>, Status)>)>> = RefCell::new(None)
 );
