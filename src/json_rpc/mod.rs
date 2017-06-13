@@ -1,5 +1,8 @@
 extern crate serde_json;
 
+mod response;
+
+use self::response::Response;
 use std::io::Read;
 use hyper::client::Client as HyperClient;
 use hyper::header::{ContentType};
@@ -8,12 +11,6 @@ use hyper::header::{ContentType};
 pub struct Client {
     base_uri: String,
     client: HyperClient
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Response {
-    pub version: String,
-    pub result: serde_json::Value
 }
 
 impl Client {

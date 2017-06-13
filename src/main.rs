@@ -5,34 +5,34 @@ extern crate humansize;
 extern crate serde_json;
 #[macro_use] extern crate serde_derive;
 
+#[macro_use] mod gui;
+mod json_rpc;
+mod nzbget;
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Mutex;
 use std::thread;
+use gui::Interface;
 use gtk::prelude::*;
-use gtk::{AboutDialog, Builder, CellRendererText, CellRendererProgress, Label, ListStore,
-    Statusbar, ToolButton, Type, TreeIter, TreeView, TreeViewColumn, Menu, MenuItem, Widget, Window};
+use gtk::{AboutDialog, Builder, Label, ListStore, Statusbar, ToolButton,
+    Type, TreeIter, Menu, MenuItem, Widget, Window};
 use humansize::{FileSize, file_size_opts as options};
-use nzbget::{Group, Status};
-
-mod client;
-#[macro_use] mod macros;
-mod nzbget;
+use nzbget::{Client, Group, Status};
 
 fn main() {
-    if gtk::init().is_err() {
-        println!("Failed to initialize GTK.");
-        return;
-    }
+    gtk::init().unwrap();
 
     let builder = Builder::new_from_string(include_str!("interface.glade"));
 
     let window: Window = builder.get_object("main_window").unwrap();
     let about_item: MenuItem = builder.get_object("about_item").unwrap();
     let about_dialog: AboutDialog = builder.get_object("about_dialog").unwrap();
-    let files_tree: TreeView = builder.get_object("files_tree").unwrap();
     let status_bar: Statusbar = builder.get_object("status_bar").unwrap();
+
+    let interface = Interface::new(&builder);
+    let files_tree = interface.create_files_tree();
 
     about_item.connect_activate(move |_| {
         about_dialog.run();
@@ -41,15 +41,15 @@ fn main() {
 
     let pause_button: ToolButton = builder.get_object("pause_button").unwrap();
     pause_button.connect_clicked(|button| {
-        let client = client::Client::new("http://localhost:6789");
+        let client = Client::new("http://localhost:6789");
         let widget = button.clone().upcast::<Widget>();
 
         widget.set_sensitive(false);
 
         if button.get_stock_id().unwrap() == "gtk-media-pause" {
-            client.call_method("pausedownload");
+            client.pause_download();
         } else {
-            client.call_method("resumedownload");
+            client.resume_download();
         }
 
         widget.set_sensitive(true);
@@ -59,11 +59,6 @@ fn main() {
     status_bar.push(context_id, "nzbget-ui");
 
     let files_store = ListStore::new(&[Type::String, Type::String, Type::String, Type::F64]);
-    add_text_column!(files_tree, "Title", 0);
-    add_text_column!(files_tree, "Status", 1);
-    add_text_column!(files_tree, "Size", 2);
-    add_progress_column!(files_tree, "Progress", 3);
-
     files_tree.set_model(Some(&files_store));
 
     let widget = files_tree.upcast::<Widget>();
@@ -77,6 +72,10 @@ fn main() {
 
         let item = MenuItem::new_with_label("resume");
         popup_menu.append(&item);
+
+        item.connect_activate(|_| {
+            println!("aaa");
+        });
 
         let item = MenuItem::new_with_label("pause");
         popup_menu.append(&item);
@@ -103,10 +102,10 @@ fn main() {
 
     thread::spawn(move || {
         loop {
-            let client = client::Client::new("http://localhost:6789");
+            let client = Client::new("http://localhost:6789");
 
-            let groups = load_groups(&client);
-            let status = load_status(&client);
+            let groups = client.load_groups();
+            let status = client.load_status();
 
             tx.send((groups, status)).unwrap();
 
@@ -123,36 +122,14 @@ fn main() {
     gtk::main();
 }
 
-fn load_groups(client: &client::Client) -> Vec<Group> {
-    let response = client.call_method("listgroups");
-
-    serde_json::from_value(response.result).unwrap()
-}
-
-fn load_status(client: &client::Client) -> Status {
-    let response = client.call_method("status");
-
-    serde_json::from_value(response.result).unwrap()
-}
-
 fn render_group(group: &Group, files_store: &ListStore) -> TreeIter {
-    let file_size = format!("{}{}", group.FileSizeHi, group.FileSizeLo).parse::<i64>().unwrap();
-    let downloaded_size = format!("{}{}", group.DownloadedSizeHi, group.DownloadedSizeLo).parse::<i64>().unwrap();
-
-    let progress = downloaded_size as f64 / file_size as f64 * 100.0;
-    let human_size = file_size.file_size(options::CONVENTIONAL).unwrap();
-
-    files_store.insert_with_values(Some(group.NZBID), &[0, 1, 2, 3], &[&group.NZBNicename, &group.Status, &human_size, &progress])
+    let human_size = group.file_size().file_size(options::CONVENTIONAL).unwrap();
+    files_store.insert_with_values(Some(group.NZBID), &[0, 1, 2, 3], &[&group.NZBNicename, &group.Status, &human_size, &group.progress()])
 }
 
 fn update_group(group: &Group, iter: &TreeIter, files_store: &ListStore) {
-    let file_size = format!("{}{}", group.FileSizeHi, group.FileSizeLo).parse::<i64>().unwrap();
-    let downloaded_size = format!("{}{}", group.DownloadedSizeHi, group.DownloadedSizeLo).parse::<i64>().unwrap();
-
-    let progress = downloaded_size as f64 / file_size as f64 * 100.0;
-    let human_size = file_size.file_size(options::CONVENTIONAL).unwrap();
-
-    files_store.set(iter, &[0, 1, 2, 3], &[&group.NZBNicename, &group.Status, &human_size, &progress])
+    let human_size = group.file_size().file_size(options::CONVENTIONAL).unwrap();
+    files_store.set(iter, &[0, 1, 2, 3], &[&group.NZBNicename, &group.Status, &human_size, &group.progress()])
 }
 
 fn receive() -> glib::Continue {
