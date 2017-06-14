@@ -12,7 +12,7 @@ mod nzbget;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::mpsc::{channel, Receiver};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use gui::Interface;
 use gtk::prelude::*;
@@ -24,14 +24,15 @@ use nzbget::{Client, Group, Status};
 fn main() {
     gtk::init().unwrap();
 
-    let builder = Builder::new_from_string(include_str!("interface.glade"));
+    let client = Arc::new(Client::new("http://localhost:6789"));
+
+    let interface = Interface::new();
+    let builder = interface.builder.clone();
 
     let window: Window = builder.get_object("main_window").unwrap();
     let about_item: MenuItem = builder.get_object("about_item").unwrap();
     let about_dialog: AboutDialog = builder.get_object("about_dialog").unwrap();
     let status_bar: Statusbar = builder.get_object("status_bar").unwrap();
-
-    let interface = Interface::new(&builder);
     let files_tree = interface.create_files_tree();
 
     about_item.connect_activate(move |_| {
@@ -39,17 +40,17 @@ fn main() {
         about_dialog.hide();
     });
 
+    let client1 = client.clone();
     let pause_button: ToolButton = builder.get_object("pause_button").unwrap();
-    pause_button.connect_clicked(|button| {
-        let client = Client::new("http://localhost:6789");
+    pause_button.connect_clicked(move |button| {
         let widget = button.clone().upcast::<Widget>();
 
         widget.set_sensitive(false);
 
         if button.get_stock_id().unwrap() == "gtk-media-pause" {
-            client.pause_download();
+            client1.pause_download();
         } else {
-            client.resume_download();
+            client1.resume_download();
         }
 
         widget.set_sensitive(true);
@@ -58,12 +59,11 @@ fn main() {
     let context_id = status_bar.get_context_id("");
     status_bar.push(context_id, "nzbget-ui");
 
-    let files_store = ListStore::new(&[Type::String, Type::String, Type::String, Type::F64]);
+    let files_store = ListStore::new(&[Type::U32, Type::String, Type::String, Type::String, Type::F64]);
     files_tree.set_model(Some(&files_store));
 
-    let widget = files_tree.upcast::<Widget>();
-
-    widget.connect_button_release_event(|_, event| {
+    let widget = files_tree.clone().upcast::<Widget>();
+    widget.connect_button_release_event(move |_, event| {
         if event.get_button() != 3 {
             return Inhibit(false)
         }
@@ -73,12 +73,34 @@ fn main() {
         let item = MenuItem::new_with_label("resume");
         popup_menu.append(&item);
 
-        item.connect_activate(|_| {
-            println!("aaa");
+        let client1 = client.clone();
+        let selection = files_tree.get_selection();
+        item.connect_activate(move |_| {
+            let (paths, model) = selection.get_selected_rows();
+
+            for path in paths {
+                let iter = model.get_iter(&path).unwrap();
+                let id = model.get_value(&iter, 0).get().unwrap();
+
+                client1.resume_groups(vec![id]);
+            }
         });
 
         let item = MenuItem::new_with_label("pause");
         popup_menu.append(&item);
+
+        let client2 = client.clone();
+        let selection = files_tree.get_selection();
+        item.connect_activate(move |_| {
+            let (paths, model) = selection.get_selected_rows();
+
+            for path in paths {
+                let iter = model.get_iter(&path).unwrap();
+                let id = model.get_value(&iter, 0).get().unwrap();
+
+                client2.pause_groups(vec![id]);
+            }
+        });
 
         popup_menu.append(&gtk::SeparatorMenuItem::new());
 
@@ -124,12 +146,12 @@ fn main() {
 
 fn render_group(group: &Group, files_store: &ListStore) -> TreeIter {
     let human_size = group.file_size().file_size(options::CONVENTIONAL).unwrap();
-    files_store.insert_with_values(Some(group.NZBID), &[0, 1, 2, 3], &[&group.NZBNicename, &group.Status, &human_size, &group.progress()])
+    files_store.insert_with_values(Some(group.NZBID), &[0, 1, 2, 3, 4], &[&group.NZBID, &group.NZBNicename, &group.Status, &human_size, &group.progress()])
 }
 
 fn update_group(group: &Group, iter: &TreeIter, files_store: &ListStore) {
     let human_size = group.file_size().file_size(options::CONVENTIONAL).unwrap();
-    files_store.set(iter, &[0, 1, 2, 3], &[&group.NZBNicename, &group.Status, &human_size, &group.progress()])
+    files_store.set(iter, &[0, 1, 2, 3, 4], &[&group.NZBID, &group.NZBNicename, &group.Status, &human_size, &group.progress()])
 }
 
 fn receive() -> glib::Continue {

@@ -12,28 +12,45 @@ pub struct Client {
     client: json_rpc::Client
 }
 
+#[derive(Serialize)]
+struct EditQueueParams<'a>(&'a str, &'a str, Vec<u32>);
+
 impl Client {
     pub fn new(base_uri: &str) -> Self {
         Client { client: json_rpc::Client::new(base_uri) }
     }
 
     pub fn load_groups(&self) -> Vec<Group> {
-        let response = self.client.call_method("listgroups");
+        let response = self.client.call_method("listgroups", None);
 
         serde_json::from_value(response.result).unwrap()
     }
 
     pub fn load_status(&self) -> Status {
-        let response = self.client.call_method("status");
+        let response = self.client.call_method("status", None);
 
         serde_json::from_value(response.result).unwrap()
     }
 
     pub fn pause_download(&self) {
-        self.client.call_method("pausedownload");
+        self.client.call_method("pausedownload", None);
     }
 
     pub fn resume_download(&self) {
-        self.client.call_method("resumedownload");
+        self.client.call_method("resumedownload", None);
+    }
+
+    pub fn pause_groups(&self, group_ids: Vec<u32>) {
+        let params = EditQueueParams("GroupPause", "", group_ids);
+        let params = serde_json::to_value(params).unwrap();
+
+        self.client.call_method("editqueue", Some(params));
+    }
+
+    pub fn resume_groups(&self, group_ids: Vec<u32>) {
+        let params = EditQueueParams("GroupResume", "", group_ids);
+        let params = serde_json::to_value(params).unwrap();
+
+        self.client.call_method("editqueue", Some(params));
     }
 }
