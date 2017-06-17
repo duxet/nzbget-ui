@@ -17,7 +17,7 @@ use std::thread;
 use gui::Interface;
 use gtk::prelude::*;
 use gtk::{AboutDialog, Builder, Label, ListStore, Statusbar, ToolButton,
-    Type, TreeIter, Menu, MenuItem, Widget, Window};
+    Type, TreeIter, TreeView, Menu, MenuItem, Widget, Window};
 use humansize::{FileSize, file_size_opts as options};
 use nzbget::{Client, Group, Status};
 
@@ -107,6 +107,19 @@ fn main() {
         let item = MenuItem::new_with_label("delete");
         popup_menu.append(&item);
 
+        let client3 = client.clone();
+        let selection = files_tree.get_selection();
+        item.connect_activate(move |_| {
+            let (paths, model) = selection.get_selected_rows();
+
+            for path in paths {
+                let iter = model.get_iter(&path).unwrap();
+                let id = model.get_value(&iter, 0).get().unwrap();
+
+                client3.delete_groups(vec![id]);
+            }
+        });
+
         popup_menu.show_all();
         popup_menu.popup_easy(event.get_button(), event.get_time());
 
@@ -144,16 +157,6 @@ fn main() {
     gtk::main();
 }
 
-fn render_group(group: &Group, files_store: &ListStore) -> TreeIter {
-    let human_size = group.file_size().file_size(options::CONVENTIONAL).unwrap();
-    files_store.insert_with_values(Some(group.NZBID), &[0, 1, 2, 3, 4], &[&group.NZBID, &group.NZBNicename, &group.Status, &human_size, &group.progress()])
-}
-
-fn update_group(group: &Group, iter: &TreeIter, files_store: &ListStore) {
-    let human_size = group.file_size().file_size(options::CONVENTIONAL).unwrap();
-    files_store.set(iter, &[0, 1, 2, 3, 4], &[&group.NZBID, &group.NZBNicename, &group.Status, &human_size, &group.progress()])
-}
-
 fn receive() -> glib::Continue {
     GLOBAL.with(|global| {
         if let Some((ref builder, ref files_store, ref rendered_groups, ref rx)) = *global.borrow() {
@@ -170,14 +173,34 @@ fn receive() -> glib::Continue {
 
                 let mut rendered_groups = rendered_groups.lock().unwrap();
 
-                for group in groups {
+                for group in &groups {
+                    let human_size = group.file_size().file_size(options::CONVENTIONAL).unwrap();
+
                     if rendered_groups.contains_key(&group.NZBID) {
-                        update_group(&group, rendered_groups.get(&group.NZBID).unwrap(), &files_store);
+                        let iter = rendered_groups.get(&group.NZBID).unwrap();
+                        files_store.set(iter, &[0, 1, 2, 3, 4], &[&group.NZBID, &group.NZBNicename, &group.Status, &human_size, &group.progress()]);
                         continue;
                     }
 
-                    let rendered_group = render_group(&group, &files_store);
+                    let rendered_group = files_store.insert_with_values(Some(group.NZBID), &[0, 1, 2, 3, 4], &[&group.NZBID, &group.NZBNicename, &group.Status, &human_size, &group.progress()]);
                     rendered_groups.insert(group.NZBID, rendered_group);
+                }
+
+                let tree_view: TreeView = builder.get_object("files_tree").unwrap();
+                let tree_model = tree_view.get_model().unwrap();
+
+                let iter = tree_model.iter_children(None).unwrap();
+
+                loop {
+                    let id: u32 = tree_model.get_value(&iter, 0).get().unwrap();
+
+                    if groups.iter().find(|x| x.NZBID == id).is_none() {
+                        files_store.remove(&iter);
+                    }
+
+                    if !tree_model.iter_next(&iter) {
+                        break;
+                    }
                 }
 
                 let mut human_speed = status.DownloadRate.file_size(options::CONVENTIONAL).unwrap();

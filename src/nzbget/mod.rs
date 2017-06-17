@@ -40,6 +40,13 @@ impl Client {
         self.client.call_method("resumedownload", None);
     }
 
+    pub fn delete_groups(&self, group_ids: Vec<u32>) {
+        let params = EditQueueParams("GroupDelete", "", group_ids);
+        let params = serde_json::to_value(params).unwrap();
+
+        self.client.call_method("editqueue", Some(params));
+    }
+
     pub fn pause_groups(&self, group_ids: Vec<u32>) {
         let params = EditQueueParams("GroupPause", "", group_ids);
         let params = serde_json::to_value(params).unwrap();
