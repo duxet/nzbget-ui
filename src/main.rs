@@ -24,7 +24,7 @@ use nzbget::{Client, Group, Status};
 fn main() {
     gtk::init().unwrap();
 
-    let client = Arc::new(Client::new("http://localhost:6789"));
+    let shared_client = Arc::new(Client::new("http://localhost:6789"));
 
     let interface = Interface::new();
     let builder = interface.builder.clone();
@@ -40,7 +40,7 @@ fn main() {
         about_dialog.hide();
     });
 
-    let client1 = client.clone();
+    let client = shared_client.clone();
     let pause_button: ToolButton = builder.get_object("pause_button").unwrap();
     pause_button.connect_clicked(move |button| {
         let widget = button.clone().upcast::<Widget>();
@@ -48,9 +48,9 @@ fn main() {
         widget.set_sensitive(false);
 
         if button.get_stock_id().unwrap() == "gtk-media-pause" {
-            client1.pause_download();
+            client.pause_download();
         } else {
-            client1.resume_download();
+            client.resume_download();
         }
 
         widget.set_sensitive(true);
@@ -63,6 +63,7 @@ fn main() {
     files_tree.set_model(Some(&files_store));
 
     let widget = files_tree.clone().upcast::<Widget>();
+    let client = shared_client.clone();
     widget.connect_button_release_event(move |_, event| {
         if event.get_button() != 3 {
             return Inhibit(false)
@@ -135,10 +136,9 @@ fn main() {
         *global.borrow_mut() = Some((builder, files_store, rendered_groups, rx))
     });
 
+    let client = shared_client.clone();
     thread::spawn(move || {
         loop {
-            let client = Client::new("http://localhost:6789");
-
             let groups = client.load_groups();
             let status = client.load_status();
 
